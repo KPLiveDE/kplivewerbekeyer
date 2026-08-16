@@ -1,11 +1,41 @@
-name: Windows Build Test
+name: Windows Build
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+  build:
     runs-on: windows-latest
 
     steps:
-      ...
+      - name: Sourcecode laden
+        uses: actions/checkout@v4
+
+      - name: OBS Plugin Template laden
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/obsproject/obs-plugintemplate.git template
+
+      - name: OBS Build-Hilfsdateien kopieren
+        shell: pwsh
+        run: |
+          Copy-Item -Path "template/.github/scripts" -Destination ".github/scripts" -Recurse -Force
+          Copy-Item -Path "template/cmake" -Destination "cmake-template" -Recurse -Force
+
+      - name: Windows Build starten
+        shell: pwsh
+        run: |
+          .\.github\scripts\Build-Windows.ps1 -Architecture x64
+
+      - name: Build-Dateien anzeigen
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path . -Recurse -Include *.dll | Select-Object FullName
+
+      - name: Build als Download speichern
+        uses: actions/upload-artifact@v4
+        with:
+          name: KPLive-Ads-Keyer-Windows-x64
+          path: |
+            release/**
+            build_x64/**
