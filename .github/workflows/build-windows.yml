@@ -8,8 +8,4 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Sourcecode laden
-        uses: actions/checkout@v4
-
-      - name: Test
-        run: echo "KPLive Ads Keyer Build funktioniert"
+      ...
