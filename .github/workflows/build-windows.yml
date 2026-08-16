@@ -25,7 +25,7 @@ jobs:
       - name: Windows Build starten
         shell: pwsh
         run: |
-          .\.github\scripts\Build-Windows.ps1 -Architecture x64
+          .\.github\scripts\Build-Windows.ps1
 
       - name: Build-Dateien anzeigen
         shell: pwsh
