@@ -1,0 +1,166 @@
+#pragma once
+
+#include <QCheckBox>
+#include <QComboBox>
+#include <QElapsedTimer>
+#include <QLabel>
+#include <QListWidget>
+#include <QSpinBox>
+#include <QTimer>
+#include <QToolBar>
+#include <QWidget>
+#include <map>
+#include <set>
+#include <string>
+
+#include "obs.h"
+#include "obs-websocket-api.h"
+
+typedef void (*get_transitions_callback_t)(void *data, struct obs_frontend_source_list *sources);
+
+class LockedCheckBox : public QCheckBox {
+	Q_OBJECT
+
+public:
+	LockedCheckBox();
+	explicit LockedCheckBox(QWidget *parent);
+};
+
+enum transitionType { match, show, hide, override };
+
+enum class SourceAnimationPreset {
+	none = 0,
+	fromLeft,
+	fromRight,
+	fromTop,
+	fromBottom,
+	zoomIn,
+	zoomOut,
+	spinLeft,
+	spinRight,
+};
+
+enum class SourceAnimationEasing { linear = 0, easeIn, easeOut, easeInOutCubic };
+
+struct SourceAnimationConfig {
+	bool enabled = false;
+	std::string sourceName;
+	SourceAnimationPreset showPreset = SourceAnimationPreset::fromLeft;
+	SourceAnimationPreset hidePreset = SourceAnimationPreset::fromRight;
+	int showDuration = 600;
+	int hideDuration = 500;
+	SourceAnimationEasing easing = SourceAnimationEasing::easeInOutCubic;
+};
+
+struct SourceAnimationTransform {
+	struct vec2 pos = {};
+	struct vec2 scale = {};
+	struct vec2 bounds = {};
+	float rot = 0.0f;
+	bool useBounds = false;
+};
+
+struct ActiveSourceAnimation {
+	obs_sceneitem_t *item = nullptr;
+	SourceAnimationTransform from = {};
+	SourceAnimationTransform to = {};
+	SourceAnimationTransform restore = {};
+	int duration = 0;
+	SourceAnimationEasing easing = SourceAnimationEasing::linear;
+	bool hide = false;
+};
+
+class DownstreamKeyer : public QWidget {
+	Q_OBJECT
+
+private:
+	QTimer hideTimer;
+	QTimer stateWatchdog;
+	QTimer sourceAnimationTimer;
+	QElapsedTimer sourceAnimationClock;
+	QString desiredScene;
+	bool temporarilySuppressed = false;
+	int outputChannel;
+	obs_source_t *transition;
+	obs_source_t *showTransition;
+	obs_source_t *hideTransition;
+	obs_source_t *overrideTransition;
+	QListWidget *scenesList;
+	QToolBar *scenesToolbar;
+	uint32_t transitionDuration;
+	uint32_t showTransitionDuration;
+	uint32_t hideTransitionDuration;
+	uint32_t overrideTransitionDuration;
+	uint32_t hideAfter;
+	std::map<std::string, SourceAnimationConfig> sourceAnimations;
+	ActiveSourceAnimation activeSourceAnimation;
+	bool sourceAnimationRunning = false;
+	bool exitAnimationInProgress = false;
+	LockedCheckBox *tie;
+	obs_hotkey_id null_hotkey_id;
+	obs_hotkey_pair_id tie_hotkey_id;
+	std::set<std::string> exclude_scenes;
+	obs_view_t *view = nullptr;
+	obs_canvas_t *canvas = nullptr;
+	get_transitions_callback_t get_transitions = nullptr;
+	void *get_transitions_data = nullptr;
+
+	static void source_rename(void *data, calldata_t *calldata);
+	static void source_remove(void *data, calldata_t *calldata);
+	static bool enable_DSK_hotkey(void *data, obs_hotkey_pair_id id, obs_hotkey_t *hotkey, bool pressed);
+	static bool disable_DSK_hotkey(void *data, obs_hotkey_pair_id id, obs_hotkey_t *hotkey, bool pressed);
+
+	static void null_hotkey(void *data, obs_hotkey_id id, obs_hotkey_t *hotkey, bool pressed);
+
+	static bool enable_tie_hotkey(void *data, obs_hotkey_pair_id id, obs_hotkey_t *hotkey, bool pressed);
+	static bool disable_tie_hotkey(void *data, obs_hotkey_pair_id id, obs_hotkey_t *hotkey, bool pressed);
+
+	void ChangeSceneIndex(bool relative, int idx, int invalidIdx);
+	void ensure_desired_state();
+	void apply_source_immediate(obs_source_t *newSource, bool skipTransition = false);
+	bool start_source_animation(obs_source_t *sceneSource, bool hide);
+	void source_animation_tick();
+	void cancel_source_animation(bool restore);
+	static SourceAnimationTransform get_sceneitem_transform(obs_sceneitem_t *item);
+	static void set_sceneitem_transform(obs_sceneitem_t *item, const SourceAnimationTransform &transform);
+	static SourceAnimationTransform preset_transform(const SourceAnimationTransform &base, SourceAnimationPreset preset,
+					      uint32_t canvasWidth, uint32_t canvasHeight);
+	static float easing_value(SourceAnimationEasing easing, float t);
+
+private slots:
+	void on_actionAddScene_triggered();
+	void on_actionRemoveScene_triggered();
+	void on_actionSceneUp_triggered();
+	void on_actionSceneDown_triggered();
+	void on_actionSceneNull_triggered();
+	void apply_source(obs_source_t *newSource);
+	void apply_selected_source();
+	void on_scenesList_itemSelectionChanged();
+signals:
+
+public:
+	DownstreamKeyer(int channel, QString name, obs_view_t *view = nullptr, obs_canvas_t *canvas = nullptr,
+			get_transitions_callback_t get_transitions = nullptr, void *get_transitions_data = nullptr);
+	~DownstreamKeyer();
+
+	void Save(obs_data_t *data);
+	void Load(obs_data_t *data);
+	void SetTransition(const char *transition_name, enum transitionType transition_type = match);
+	std::string GetTransition(enum transitionType transition_type = match);
+	void SetTransitionDuration(int duration, enum transitionType transition_type = match);
+	int GetTransitionDuration(enum transitionType transition_type = match);
+	void SetHideAfter(int duration);
+	int GetHideAfter();
+	void SceneChanged(std::string scene);
+	void AddExcludeScene(const char *scene_name);
+	void RemoveExcludeScene(const char *scene_name);
+	bool IsSceneExcluded(const char *scene_name);
+	QString GetScene();
+	bool SwitchToScene(QString scene_name);
+	void add_scene(QString scene_name, obs_source_t *s, int insertBeforeRow);
+	bool AddScene(QString scene_name, int insertBeforeRow);
+	bool RemoveScene(QString scene_name);
+	void SetTie(bool tie);
+	void SetOutputChannel(int outputChannel);
+	void ConfigureSourceAnimation(QWidget *parent = nullptr);
+};
